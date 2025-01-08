@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Nether Docs</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+      font-family: Arial, sans-serif;
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      color: #333;
+    }
+
+    /* Simple container for the docs and key */
+    .docs-section {
+      width: 90%;
+      max-width: 600px;
+      margin: 20px 0;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      border: 2px solid #000000;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .docs-section h2 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 24px;
+      color: #333;
+    }
+
+    /* The field for displaying the API key */
+    #obsidianKey {
+      font-size: 16px;
+      padding: 10px;
+      margin: 5px 0;
+      width: calc(100% - 22px);
+      border-radius: 5px;
+      border: 2px solid #000000;
+    }
+
+    .docs-container {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    .doc-card {
+      background: #ffffff;
+      margin: 10px 0;
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #000000;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .doc-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .doc-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+
+    .doc-content {
+      font-size: 14px;
+      color: #333;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    button {
+      font-size: 16px;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      background-color: #ffffff;
+      border: 2px solid #000000;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #b5b5b5;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main container for docs and key -->
+  <div class="docs-section">
+    <h2>Obsidian Docs</h2>
+    <label for="obsidianKey">API Key for Plugin:</label><br>
+    <input type="text" id="obsidianKey" readonly>
+    <button id="copyKeyButton">Copy Key</button>
+
+    <div class="docs-container" id="docsContainer"></div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      let netherKey = '';
+      let docsData = [];
+
+      // Fetch the docs and key from /nether/state
+      fetch('/apps/nether/state')
+        .then(response => response.json())
+        .then(data => {
+          // data should have: { key, docs: [ {title, content}, ... ] }
+          netherKey = data.key;
+          docsData = data.docs || [];
+
+          // Place the key in the text field
+          document.getElementById("obsidianKey").value = netherKey;
+
+          // Render the docs
+          renderDocs();
+        })
+        .catch(err => {
+          console.error("Failed to fetch Nether docs:", err);
+        });
+
+      // Render doc cards
+      function renderDocs() {
+        const container = document.getElementById("docsContainer");
+        container.innerHTML = '';
+
+        docsData.forEach(doc => {
+          const docCard = document.createElement('div');
+          docCard.className = 'doc-card';
+
+          const titleEl = document.createElement('div');
+          titleEl.className = 'doc-title';
+          titleEl.textContent = doc.title;
+
+          const contentEl = document.createElement('div');
+          contentEl.className = 'doc-content';
+          contentEl.textContent = doc.content;
+
+          docCard.appendChild(titleEl);
+          docCard.appendChild(contentEl);
+          container.appendChild(docCard);
+        });
+      }
+
+      // Copy key button
+      const copyKeyButton = document.getElementById("copyKeyButton");
+      copyKeyButton.addEventListener("click", function() {
+        const keyField = document.getElementById("obsidianKey");
+        navigator.clipboard.writeText(keyField.value)
+          .then(() => {
+            alert("Key copied to clipboard!");
+          })
+          .catch(err => {
+            console.error("Failed to copy key:", err);
+          });
+      });
+    });
+  </script>
+</body>
+</html>

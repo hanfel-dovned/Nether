@@ -1,17 +1,10 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, Notice } from 'obsidian';
 
-/** 
- * Our plugin’s settings. 
- * We’ll let the user specify a server URL and an API key.
- */
 interface NetherPluginSettings {
   serverUrl: string;
   apiKey: string;
 }
 
-/** 
- * Default settings. 
- */
 const DEFAULT_SETTINGS: NetherPluginSettings = {
   serverUrl: '',
   apiKey: '',
@@ -23,8 +16,6 @@ export default class NetherPlugin extends Plugin {
   async onload() {
     console.log('Loading NetherPlugin...');
     await this.loadSettings();
-
-    // This registers our plugin’s settings tab:
     this.addSettingTab(new NetherPluginSettingTab(this.app, this));
   }
 
@@ -33,7 +24,6 @@ export default class NetherPlugin extends Plugin {
   }
 
   async loadSettings() {
-    // Obsidian provides this.loadData() which reads from a data.json in your plugin’s folder
     const loadedData = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
   }
@@ -42,10 +32,10 @@ export default class NetherPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  /** 
-   * Utility to get the current active note’s content. 
+  /**
+   * Utility to get the current active note’s file and content.
    */
-  async getCurrentNoteContent(): Promise<{ file: TFile | null, content: string | null }> {
+  async getCurrentNoteContent(): Promise<{ file: TFile | null; content: string | null }> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
       return { file: null, content: null };
@@ -55,7 +45,8 @@ export default class NetherPlugin extends Plugin {
   }
 
   /**
-   * Posts the current note’s content to the server.
+   * POST the current note’s title (no extension) and content to the server.
+   * Sending JSON: { title, content }
    */
   async postDocument() {
     const { file, content } = await this.getCurrentNoteContent();
@@ -64,15 +55,21 @@ export default class NetherPlugin extends Plugin {
       return;
     }
 
+    const noteTitle = file.basename;
+
     try {
       const response = await fetch(this.settings.serverUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.settings.apiKey}`,
+          'Authorization': this.settings.apiKey,
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          title: noteTitle,
+          content: content,
+        }),
       });
+
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
@@ -84,7 +81,8 @@ export default class NetherPlugin extends Plugin {
   }
 
   /**
-   * Retrieves a document from the server and overwrites the current note with the result.
+   * GET the document from `serverUrl/file/<title>` and overwrite the current note’s content.
+   * Expected JSON response: { title, content }
    */
   async retrieveDocument() {
     const { file } = await this.getCurrentNoteContent();
@@ -93,23 +91,29 @@ export default class NetherPlugin extends Plugin {
       return;
     }
 
+    const noteTitle = file.basename;
+    const encodedTitle = encodeURIComponent(noteTitle);
+
     try {
-      const response = await fetch(this.settings.serverUrl, {
+      const url = `${this.settings.serverUrl}/file/${encodedTitle}`;
+      
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.settings.apiKey}`,
+          'Authorization': this.settings.apiKey, // No 'Bearer' prefix
         },
       });
+
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
       const data = await response.json();
-      if (!data || typeof data.content !== 'string') {
-        throw new Error('No "content" field in JSON.');
+      if (!data || typeof data.content !== 'string' || typeof data.title !== 'string') {
+        throw new Error('Response JSON did not have "title" and "content" fields.');
       }
 
       await this.app.vault.modify(file, data.content);
-      new Notice('Document retrieved and updated.');
+      new Notice(`Document retrieved for "${data.title}" and updated.`);
     } catch (err) {
       console.error(err);
       new Notice('Failed to retrieve document.');
@@ -117,10 +121,6 @@ export default class NetherPlugin extends Plugin {
   }
 }
 
-/**
- * Plugin settings tab, where we display the two text fields (URL and Key)
- * and the Post/Retrieve buttons.
- */
 class NetherPluginSettingTab extends PluginSettingTab {
   plugin: NetherPlugin;
 
@@ -133,9 +133,8 @@ class NetherPluginSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'My Sync Plugin Settings' });
+    containerEl.createEl('h2', { text: 'Nether Plugin Settings' });
 
-    // Server URL Setting
     new Setting(containerEl)
       .setName('Urbit URL')
       .setDesc('The URL of your Urbit app (ends in /apps/nether).')
@@ -147,10 +146,9 @@ class NetherPluginSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    // API Key Setting
     new Setting(containerEl)
-      .setName('API Key')
-      .setDesc('Authentication key for your Urbit app.')
+      .setName('Key')
+      .setDesc('Secret key from your Urbit app.')
       .addText(text => text
         .setPlaceholder('Your secret key')
         .setValue(this.plugin.settings.apiKey)
@@ -159,10 +157,9 @@ class NetherPluginSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    // Post button
     new Setting(containerEl)
       .setName('Post Document')
-      .setDesc('Send the current note’s content to your Urbit.')
+      .setDesc('POST the current note’s title/content to your ship.')
       .addButton(button => {
         button.setButtonText('Post');
         button.onClick(async () => {
@@ -170,10 +167,9 @@ class NetherPluginSettingTab extends PluginSettingTab {
         });
       });
 
-    // Retrieve button
     new Setting(containerEl)
       .setName('Retrieve Document')
-      .setDesc('Fetch the document from your Urbit and overwrite the current note.')
+      .setDesc('GET the document from your ship and overwrite the current note.')
       .addButton(button => {
         button.setButtonText('Retrieve');
         button.onClick(async () => {
