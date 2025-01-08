@@ -11,7 +11,7 @@ Nether lets you sync Obsidian documents across your devices using your Urbit shi
 2. Clone this repo to your local machine. From the `nether-plugin` directory, copy these three files into `<YourVault>/.obsidian/plugins/nether/`:
 - `main.js`
 - `styles.css`
-- `mainfest.json`
+- `manifest.json`
 
 3. In Obsidian, open Settings -> Community plugins and disable Restricted mode. You should see Nether under "Installed plugins" in the same tab; enable it, and then open the Nether tab in the left sidebar.
 
