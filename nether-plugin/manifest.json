@@ -1,0 +1,11 @@
+{
+  "id": "nether",
+  "name": "Nether",
+  "version": "0.1.0",
+  "minAppVersion": "0.12.0",
+  "description": "Sync documents to your Urbit ship.",
+	"author": "~hanfel-dovned",
+	"authorUrl": "https://x.com/hanfel_dovned",
+	"fundingUrl": "https://x.com/hanfel_dovned",
+	"isDesktopOnly": false
+}
