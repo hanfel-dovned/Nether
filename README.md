@@ -13,6 +13,6 @@ Nether lets you sync Obsidian documents across your devices using your Urbit shi
 - `styles.css`
 - `manifest.json`
 
-3. In Obsidian, open Settings -> Community plugins and disable Restricted mode. You should see Nether under "Installed plugins" in the same tab; enable it, and then open the Nether tab in the left sidebar.
+3. In Obsidian, open `Settings` -> `Community plugins` and disable `Restricted mode`. You should see Nether under `Installed plugins` in the same tab; enable it, and then open the Nether tab in the left sidebar.
 
 4. Copy in your ship URL and secret key. You can now push documents to your ship and pull them back down.
