@@ -1,6 +1,6 @@
 # Nether
 
-**THIS APP IS IN ALPHA. DO NOT USE IT WITH ANY DATA YOU ACTUALLY CARE ABOUT.**
+**THIS APP IS IN PRE-ALPHA AND IS BUGGED. DO NOT USE IT WITH ANY DATA YOU ACTUALLY CARE ABOUT.**
 
 Nether lets you sync Obsidian documents across your devices using your Urbit ship.
 
