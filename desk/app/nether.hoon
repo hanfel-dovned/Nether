@@ -134,10 +134,11 @@
     =/  old-doc  (~(get by (need old-vault)) title.doc)
     ?~  old-doc
       ::  Doc doesn't already exist, so we make it, easy
-      =.  docs
-        %+  ~(put by docs) 
-          vault.doc 
-        (malt [[title.doc [content.doc timestamp.doc]] ~])
+      =/  new-vault
+        %+  ~(put by (need old-vault)) 
+          title.doc 
+        [content.doc timestamp.doc]
+      =.  docs  (~(put by docs) vault.doc new-vault)
       %-  emil  %-  flop  %-  send
       [200 ~ [%none ~]]
     ?:  (lth timestamp.doc timestamp:(need old-doc))
