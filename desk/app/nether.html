@@ -17,19 +17,25 @@
       color: #333;
     }
 
-    /* Simple container for the docs and key */
-    .docs-section {
+    /* Main container for the page's content */
+    .main-container {
       width: 90%;
-      max-width: 600px;
+      max-width: 800px;
       margin: 20px 0;
-      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .header-section {
+      background: #fff;
       border-radius: 8px;
       padding: 20px;
-      border: 2px solid #000000;
+      border: 2px solid #000;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    .docs-section h2 {
+    .header-section h2 {
       margin-top: 0;
       margin-bottom: 10px;
       font-size: 24px;
@@ -43,24 +49,53 @@
       margin: 5px 0;
       width: calc(100% - 22px);
       border-radius: 5px;
+      border: 2px solid #000;
+    }
+
+    /* Shared button styling */
+    button {
+      font-size: 16px;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      background-color: #ffffff;
       border: 2px solid #000000;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #b5b5b5;
+    }
+
+    .vault-container {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      border: 2px solid #000;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .vault-header {
+      font-size: 20px;
+      margin: 0 0 10px 0;
+      font-weight: bold;
     }
 
     .docs-container {
       display: flex;
       flex-direction: column;
-      align-items: stretch;
-      width: 100%;
-      margin-top: 20px;
+      gap: 10px;
     }
 
     .doc-card {
       background: #ffffff;
-      margin: 10px 0;
       padding: 15px;
       border-radius: 8px;
       border: 2px solid #000000;
       transition: box-shadow 0.2s ease;
+      position: relative;
     }
 
     .doc-card:hover {
@@ -79,80 +114,108 @@
       color: #333;
       word-break: break-all;
       white-space: pre-wrap;
+      margin-bottom: 8px;
     }
 
-    button {
-      font-size: 16px;
-      padding: 10px;
-      margin-top: 10px;
-      width: 100%;
-      background-color: #ffffff;
-      border: 2px solid #000000;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-    }
-
-    button:hover {
-      background-color: #b5b5b5;
+    .doc-timestamp {
+      font-size: 12px;
+      color: #666;
     }
   </style>
 </head>
 <body>
-  <!-- Main container for docs and key -->
-  <div class="docs-section">
-    <h2>Obsidian Docs</h2>
-    <label for="obsidianKey">API Key for Plugin:</label><br>
-    <input type="text" id="obsidianKey" readonly>
-    <button id="copyKeyButton">Copy Key</button>
 
-    <div class="docs-container" id="docsContainer"></div>
+  <div class="main-container">
+    <!-- Header Section with Key -->
+    <div class="header-section">
+      <h2>Nether Docs</h2>
+      <label for="obsidianKey">API Key for Plugin:</label><br>
+      <input type="text" id="obsidianKey" readonly>
+      <button id="copyKeyButton">Copy Key</button>
+    </div>
+
+    <!-- Vaults and Docs get rendered here -->
+    <div id="vaultsContainer"></div>
   </div>
 
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       let netherKey = '';
-      let docsData = [];
+      let docsByVault = {};
 
-      // Fetch the docs and key from /nether/state
+      // Fetch the docs and key from /apps/nether/state
       fetch('/apps/nether/state')
         .then(response => response.json())
         .then(data => {
-          // data should have: { key, docs: [ {title, content}, ... ] }
+          // data should have: { key, docs: { [vaultName]: [ {title, content, timestamp}, ... ] } }
           netherKey = data.key;
-          docsData = data.docs || [];
+          docsByVault = data.docs || {};
 
           // Place the key in the text field
           document.getElementById("obsidianKey").value = netherKey;
 
-          // Render the docs
-          renderDocs();
+          // Render the vaults and docs
+          renderVaults();
         })
         .catch(err => {
           console.error("Failed to fetch Nether docs:", err);
         });
 
-      // Render doc cards
-      function renderDocs() {
-        const container = document.getElementById("docsContainer");
-        container.innerHTML = '';
+      // Render the vaults
+      function renderVaults() {
+        const vaultsContainer = document.getElementById("vaultsContainer");
+        vaultsContainer.innerHTML = '';
 
-        docsData.forEach(doc => {
-          const docCard = document.createElement('div');
-          docCard.className = 'doc-card';
+        // For each vault name in docsByVault, create a vault container
+        Object.entries(docsByVault).forEach(([vaultName, docArray]) => {
+          const vaultDiv = document.createElement('div');
+          vaultDiv.className = 'vault-container';
 
-          const titleEl = document.createElement('div');
-          titleEl.className = 'doc-title';
-          titleEl.textContent = doc.title;
+          const vaultHeader = document.createElement('div');
+          vaultHeader.className = 'vault-header';
+          vaultHeader.textContent = `Vault: ${vaultName}`;
+          vaultDiv.appendChild(vaultHeader);
 
-          const contentEl = document.createElement('div');
-          contentEl.className = 'doc-content';
-          contentEl.textContent = doc.content;
+          const docsContainer = document.createElement('div');
+          docsContainer.className = 'docs-container';
 
-          docCard.appendChild(titleEl);
-          docCard.appendChild(contentEl);
-          container.appendChild(docCard);
+          docArray.forEach(doc => {
+            docsContainer.appendChild(createDocCard(doc));
+          });
+
+          vaultDiv.appendChild(docsContainer);
+          vaultsContainer.appendChild(vaultDiv);
         });
+      }
+
+      // Create a card for a single doc
+      function createDocCard(doc) {
+        const docCard = document.createElement('div');
+        docCard.className = 'doc-card';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'doc-title';
+        titleEl.textContent = doc.title || '(No Title)';
+
+        const contentEl = document.createElement('div');
+        contentEl.className = 'doc-content';
+        contentEl.textContent = doc.content || '(No Content)';
+
+        const timestampEl = document.createElement('div');
+        timestampEl.className = 'doc-timestamp';
+        if (doc.timestamp) {
+          // Convert the numeric timestamp to a readable date/time
+          const dateStr = new Date(doc.timestamp).toLocaleString();
+          timestampEl.textContent = `Last Updated: ${dateStr}`;
+        } else {
+          timestampEl.textContent = 'Last Updated: unknown';
+        }
+
+        docCard.appendChild(titleEl);
+        docCard.appendChild(contentEl);
+        docCard.appendChild(timestampEl);
+
+        return docCard;
       }
 
       // Copy key button

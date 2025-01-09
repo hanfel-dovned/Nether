@@ -3,7 +3,11 @@
 ::
 |%
 +$  versioned-state  $%(state-0)
-+$  state-0  [%0 docs=(map title=@t content=@t) key=@t]
++$  state-0
+  $:  %0
+      key=@t
+      docs=(map vault=@t (map title=@t [content=@t timestamp=@da]))
+  ==
 +$  card  card:agent:gall
 --
 ::
@@ -116,8 +120,25 @@
     ?>  =(key value.kee)
     =/  json  (de:json:html q.u.body.request.inbound-request)
     =/  doc
-      ((ot ~[title+so content+so]):dejs:format +.json)
-    =.  docs  (~(put by docs) -.doc +.doc)
+      ^-  [vault=@t title=@t content=@t timestamp=@da]
+      ((ot ~[vault+so title+so content+so timestamp+di]):dejs:format +.json)
+    =/  old-vault  (~(get by docs) vault.doc)
+    ?~  old-vault
+      ::  Vault doesn't already exist, so we make it, easy
+      =.  docs
+        %+  ~(put by docs) 
+          vault.doc 
+        (malt [[title.doc [content.doc timestamp.doc]] ~])
+      %-  emil  %-  flop  %-  send
+      [200 ~ [%none ~]]
+    =/  old-doc  (~(got by (need old-vault)) title.doc)
+    ?:  (lth timestamp.doc timestamp.old-doc)
+      ::  Client's latest file isn't up to date, don't let them post
+      %-  emil  %-  flop  %-  send
+      [409 ~ [%plain "The server has a newer version of this document."]]
+    =/  new-vault
+      (~(put by (need old-vault)) title.doc [content.doc timestamp.doc])
+    =.  docs  (~(put by docs) vault.doc new-vault)
     %-  emil  %-  flop  %-  send
     [200 ~ [%none ~]]
     ::
@@ -133,13 +154,39 @@
       ?>  =(src.bowl our.bowl)
       [200 ~ [%json enjs-state]]
     ::
-        [%apps %nether %file @ ~]
+        [%apps %nether %pull ~]
       =/  headers  (malt header-list.request.inbound-request)
       =/  kee  (~(got by headers) 'authorization')
       ?>  =(key value.kee)
-      =/  title  +30:site
-      [200 ~ [%json (enjs-doc i.title)]]
+      =/  params  (malt args)
+      =/  vault  (~(got by params) 'vault')
+      =/  timestamp  (~(got by params) 'since')
+      [200 ~ [%json (enjs-new [value.vault value.timestamp])]]
     ==
+  ==
+::
+++  enjs-new
+  |=  [vault=@t timestamp=@t]
+  =,  enjs:format
+  ^-  json
+  =/  date=@da  
+    (di:dejs:format n+timestamp)
+  =/  v  (~(got by docs) vault)
+  =/  newer
+    %+  skim
+      ~(tap by v)
+    |=  [title=@t [content=@t stamp=@da]]
+    (gth stamp date)
+  %-  frond
+  :-  %updates
+  :-  %a
+  %+  turn
+    newer
+  |=  [title=@t [content=@t stamp=@da]]
+  %-  pairs
+  :~  [%title s+title]
+      [%content s+content]
+      [%timestamp (time stamp)]
   ==
 ::
 ++  enjs-state
@@ -149,18 +196,19 @@
   :~  [%key [%s key]]
       ::
       :-  %docs
+      %-  pairs
+      %+  turn
+        ~(tap by docs)
+      |=  [vault=@t files=(map title=@t [content=@t stamp=@da])]
+      :-  vault
       :-  %a
       %+  turn
-        ~(tap in ~(key by docs))
-      enjs-doc
-  ==
-::
-++  enjs-doc
-  |=  title=@t
-  =,  enjs:format
-  ^-  json
-  %-  pairs
-  :~  [%title [%s title]]
-      [%content [%s (~(got by docs) title)]]
+        ~(tap by files)
+      |=  [title=@t [content=@t stamp=@da]]
+      %-  pairs
+      :~  [%title s+title]
+          [%content s+content]
+          [%timestamp (time stamp)]
+      ==
   ==
 --

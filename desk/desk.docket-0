@@ -3,7 +3,7 @@
     color+0xff.ffff
     base+'nether'
     site+/apps/nether
-    version+[0 1 0]
+    version+[0 2 0]
     website+'https://x.com/hanfel_dovned'
     license+''
 ==

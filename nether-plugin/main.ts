@@ -1,22 +1,50 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, Notice } from 'obsidian';
+import { 
+  App, 
+  Plugin, 
+  PluginSettingTab, 
+  Setting, 
+  TFile, 
+  Notice 
+} from 'obsidian';
 
 interface NetherPluginSettings {
-  serverUrl: string;
-  apiKey: string;
+  serverUrl: string;     // e.g. https://example-star.startram.io/apps/nether
+  apiKey: string;        // The secret key
+  vaultName: string;     // The name of this vault, to separate multiple vaults on the server
+  lastSyncedAt: number;  // The latest timestamp we've successfully synced
 }
 
 const DEFAULT_SETTINGS: NetherPluginSettings = {
   serverUrl: '',
   apiKey: '',
+  vaultName: '',
+  lastSyncedAt: 0,
 };
 
 export default class NetherPlugin extends Plugin {
   settings: NetherPluginSettings;
 
+  // We'll store a map of timeouts for each file so we can debounce changes:
+  private uploadTimeouts: Map<string, number> = new Map();
+
   async onload() {
-    console.log('Loading NetherPlugin...');
+    console.log('Loading NetherPlugin (auto-sync)...');
     await this.loadSettings();
     this.addSettingTab(new NetherPluginSettingTab(this.app, this));
+
+    // Whenever a Markdown file is modified, schedule an upload.
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.scheduleUpload(file);
+        }
+      })
+    );
+
+    // Poll the server every 10 seconds for new docs
+    this.registerInterval(
+      window.setInterval(() => this.pullUpdates(), 10000)
+    );
   }
 
   onunload() {
@@ -33,90 +61,129 @@ export default class NetherPlugin extends Plugin {
   }
 
   /**
-   * Utility to get the current active note’s file and content.
+   * Schedule an upload for the given file, debounced by 10 seconds.
+   * If the user keeps editing the file, we'll keep resetting the timer.
    */
-  async getCurrentNoteContent(): Promise<{ file: TFile | null; content: string | null }> {
-    const file = this.app.workspace.getActiveFile();
-    if (!file) {
-      return { file: null, content: null };
+  private scheduleUpload(file: TFile) {
+    const filePath = file.path;
+
+    // If there's an existing timer for this file, clear it
+    if (this.uploadTimeouts.has(filePath)) {
+      window.clearTimeout(this.uploadTimeouts.get(filePath));
     }
-    const content = await this.app.vault.read(file);
-    return { file, content };
+
+    // Set a new timer for 10 seconds
+    const timeoutId = window.setTimeout(() => {
+      this.uploadFile(file);
+      this.uploadTimeouts.delete(filePath);
+    }, 10_000);
+
+    this.uploadTimeouts.set(filePath, timeoutId);
   }
 
   /**
-   * POST the current note’s title (no extension) and content to the server.
-   * Sending JSON: { title, content }
+   * Actually upload a file: read its content and POST to the server.
+   * We'll include the current timestamp in the JSON body.
    */
-  async postDocument() {
-    const { file, content } = await this.getCurrentNoteContent();
-    if (!file || content === null) {
-      new Notice('No active note found.');
-      return;
-    }
-
-    const noteTitle = file.basename;
-
+  private async uploadFile(file: TFile) {
     try {
-      const response = await fetch(this.settings.serverUrl, {
+      const content = await this.app.vault.read(file);
+      const now = Date.now();
+
+      // POST to something like: POST /upload
+      // Body:
+      // { vault, title, content, timestamp }
+      const response = await fetch(`${this.settings.serverUrl}/upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': this.settings.apiKey,
         },
         body: JSON.stringify({
-          title: noteTitle,
+          vault: this.settings.vaultName,
+          title: file.basename,
           content: content,
+          timestamp: now
         }),
       });
 
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
-      new Notice('Document posted successfully.');
+
+      // If the POST succeeded, update our lastSyncedAt to at least 'now'
+      // in case this is the highest timestamp we've sent or received so far.
+      if (now > this.settings.lastSyncedAt) {
+        this.settings.lastSyncedAt = now;
+        await this.saveSettings();
+      }
+
+      console.log(`Auto-synced: ${file.basename} at ${now}`);
     } catch (err) {
-      console.error(err);
-      new Notice('Failed to post document.');
+      console.error('Auto-sync upload failed:', err);
     }
   }
 
   /**
-   * GET the document from `serverUrl/file/<title>` and overwrite the current note’s content.
-   * Expected JSON response: { title, content }
+   * Pull any updates from the server that have a timestamp
+   * newer than our current `lastSyncedAt`.
+   *
+   * For each returned doc:
+   *   - If the local file exists, overwrite it
+   *   - If not, create it (optional)
+   * Update our `lastSyncedAt` so we only pull newer data next time.
    */
-  async retrieveDocument() {
-    const { file } = await this.getCurrentNoteContent();
-    if (!file) {
-      new Notice('No active note found.');
-      return;
-    }
-
-    const noteTitle = file.basename;
-    const encodedTitle = encodeURIComponent(noteTitle);
-
+  private async pullUpdates() {
     try {
-      const url = `${this.settings.serverUrl}/file/${encodedTitle}`;
-      
+      // GET /pull?vault=<vaultName>&since=<lastSyncedAt>
+      const url = `${this.settings.serverUrl}/pull?vault=${encodeURIComponent(this.settings.vaultName)}&since=${this.settings.lastSyncedAt}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': this.settings.apiKey, // No 'Bearer' prefix
+          'Authorization': this.settings.apiKey,
         },
       });
 
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
+
+      // Expecting JSON: { updates: [ {title, content, timestamp}, ... ] }
+      // Possibly no updates, or many
       const data = await response.json();
-      if (!data || typeof data.content !== 'string' || typeof data.title !== 'string') {
-        throw new Error('Response JSON did not have "title" and "content" fields.');
+      if (!data || !Array.isArray(data.updates)) {
+        throw new Error('Response JSON missing "updates" array.');
       }
 
-      await this.app.vault.modify(file, data.content);
-      new Notice(`Document retrieved for "${data.title}" and updated.`);
+      let highestTimestamp = this.settings.lastSyncedAt;
+
+      for (const doc of data.updates) {
+        if (!doc.title || !doc.content || !doc.timestamp) {
+          continue; // Skip malformed entries
+        }
+        const localFile = this.app.vault.getAbstractFileByPath(doc.title + '.md');
+        if (localFile instanceof TFile) {
+          // Overwrite
+          await this.app.vault.modify(localFile, doc.content);
+        } else {
+          // Optional: create a new file if it doesn’t exist
+          await this.app.vault.create(doc.title + '.md', doc.content);
+        }
+
+        if (doc.timestamp > highestTimestamp) {
+          highestTimestamp = doc.timestamp;
+        }
+
+        console.log(`Pulled and updated: ${doc.title} (ts=${doc.timestamp})`);
+      }
+
+      // Update our last synced timestamp
+      if (highestTimestamp > this.settings.lastSyncedAt) {
+        this.settings.lastSyncedAt = highestTimestamp;
+        await this.saveSettings();
+      }
     } catch (err) {
-      console.error(err);
-      new Notice('Failed to retrieve document.');
+      console.error('Failed to pull updates:', err);
     }
   }
 }
@@ -137,13 +204,12 @@ class NetherPluginSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Urbit URL')
-      .setDesc('The URL of your Urbit app (ends in /apps/nether).')
+      .setDesc('The URL of your Urbit Nether app (e.g., /apps/nether).')
       .addText(text => text
         .setPlaceholder('https://sampel-palnet.startram.io/apps/nether')
         .setValue(this.plugin.settings.serverUrl)
         .onChange(async (value) => {
           this.plugin.settings.serverUrl = value;
-          await this.plugin.saveSettings();
         }));
 
     new Setting(containerEl)
@@ -154,26 +220,26 @@ class NetherPluginSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.apiKey)
         .onChange(async (value) => {
           this.plugin.settings.apiKey = value;
-          await this.plugin.saveSettings();
         }));
 
     new Setting(containerEl)
-      .setName('Post Document')
-      .setDesc('POST the current note’s title/content to your ship.')
-      .addButton(button => {
-        button.setButtonText('Post');
-        button.onClick(async () => {
-          await this.plugin.postDocument();
-        });
-      });
+      .setName('Vault Name')
+      .setDesc('A unique name for this vault to sync files to and from.')
+      .addText(text => text
+        .setPlaceholder('MyVaultName')
+        .setValue(this.plugin.settings.vaultName)
+        .onChange(async (value) => {
+          this.plugin.settings.vaultName = value;
+        }));
 
     new Setting(containerEl)
-      .setName('Retrieve Document')
-      .setDesc('GET the document from your ship and overwrite the current note.')
+      .setName('Save Settings')
+      .setDesc('Apply your changes.')
       .addButton(button => {
-        button.setButtonText('Retrieve');
+        button.setButtonText('Save');
         button.onClick(async () => {
-          await this.plugin.retrieveDocument();
+          await this.plugin.saveSettings();
+          new Notice('Nether plugin settings have been saved.');
         });
       });
   }
