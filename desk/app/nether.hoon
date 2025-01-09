@@ -131,8 +131,16 @@
         (malt [[title.doc [content.doc timestamp.doc]] ~])
       %-  emil  %-  flop  %-  send
       [200 ~ [%none ~]]
-    =/  old-doc  (~(got by (need old-vault)) title.doc)
-    ?:  (lth timestamp.doc timestamp.old-doc)
+    =/  old-doc  (~(get by (need old-vault)) title.doc)
+    ?~  old-doc
+      ::  Doc doesn't already exist, so we make it, easy
+      =.  docs
+        %+  ~(put by docs) 
+          vault.doc 
+        (malt [[title.doc [content.doc timestamp.doc]] ~])
+      %-  emil  %-  flop  %-  send
+      [200 ~ [%none ~]]
+    ?:  (lth timestamp.doc timestamp:(need old-doc))
       ::  Client's latest file isn't up to date, don't let them post
       %-  emil  %-  flop  %-  send
       [409 ~ [%plain "The server has a newer version of this document."]]

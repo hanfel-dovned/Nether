@@ -204,7 +204,7 @@ class NetherPluginSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Urbit URL')
-      .setDesc('The URL of your Urbit Nether app (e.g., /apps/nether).')
+      .setDesc('The URL of your Urbit Nether app, ending in /apps/nether')
       .addText(text => text
         .setPlaceholder('https://sampel-palnet.startram.io/apps/nether')
         .setValue(this.plugin.settings.serverUrl)
